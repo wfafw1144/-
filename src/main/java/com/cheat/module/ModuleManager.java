@@ -7,6 +7,7 @@ import com.cheat.module.impl.KillAura;
 import com.cheat.module.impl.NoFall;
 import com.cheat.module.impl.Speed;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
+import com.cheat.gui.GhostScreen;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
@@ -27,6 +28,7 @@ public class ModuleManager {
     private KeyBinding keyFly;
     private KeyBinding keySpeed;
     private KeyBinding keyNoFall;
+    private KeyBinding keyMenu;
 
     public void init() {
         keyKillAura = KeyBindingHelper.registerKeyBinding(new KeyBinding(
@@ -37,6 +39,8 @@ public class ModuleManager {
                 "key.ghostmod.speed",    InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_G, CAT));
         keyNoFall = KeyBindingHelper.registerKeyBinding(new KeyBinding(
                 "key.ghostmod.nofall",   InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_H, CAT));
+        keyMenu = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+                "key.ghostmod.menu",     InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_RIGHT_SHIFT, CAT));
     }
 
     public void onStartTick(MinecraftClient mc) {
@@ -49,6 +53,7 @@ public class ModuleManager {
         while (keyFly.wasPressed())      fly.toggle(mc);
         while (keySpeed.wasPressed())    speed.toggle();
         while (keyNoFall.wasPressed())   noFall.toggle();
+        while (keyMenu.wasPressed())     if (mc.currentScreen == null) mc.setScreen(new GhostScreen(this));
 
         // тики модулей
         if (fly.enabled)      fly.onTick(mc);

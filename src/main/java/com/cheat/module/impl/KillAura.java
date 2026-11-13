@@ -1,8 +1,9 @@
-// language: Java, file: KillAura.java, target: MC 1.21.1 Fabric (yarn 1.21.1+build.3)
-// design: vanilla packet order. attack runs at START of tick using the rotation the server
-// already got last tick; the new rotation is applied only inside sendMovementPackets (mixin).
-// camera never moves. rotations are smoothed, GCD-quantized to the player's sensitivity,
-// attack only fires when the *sent* rotation ray actually hits the target box.
+// language: Java, file: KillAura.java, target: MC 1.21.11 Fabric (yarn)
+// vanilla packet order: attack at START of tick with the rotation the server already has;
+// new rotation is applied only inside sendMovementPackets (ClientPlayerMixin). camera never moves.
+// rotation = momentum model (accel/decel, small overshoot) -> GCD-quantized to real sensitivity.
+// hit only when the SENT rotation ray intersects the target box (no "perfect center" aimbot signature).
+// single-target lock + reaction delay (anti multi-aura / instant-reaction heuristics).
 package com.cheat.module.impl;
 
 import net.minecraft.client.MinecraftClient;
@@ -26,83 +27,97 @@ public class KillAura {
 
     public boolean enabled = false;
 
-    // ── settings ─────────────────────────────────────────────────
-    private static final double ATTACK_RANGE  = 2.85;  // eye->hitbox; margin for 100+ ms target ping (lagcomp'd reach checks)
-    private static final double AIM_RANGE     = 4.2;   // start turning before in range
-    private static final boolean PLAYERS      = true;
-    private static final boolean HOSTILES     = true;
-    private static final boolean THROUGH_WALLS = false;
-    private static final float  MAX_TURN      = 38f;   // deg/tick cap
-    private static final float  MIN_TURN      = 3f;
+    // ── settings (editable from the menu) ────────────────────────
+    public double  attackRange  = 2.85;  // eye->hitbox
+    public double  aimRange     = 4.2;
+    public float   turnSpeed    = 34f;   // max deg/tick
+    public boolean players      = true;
+    public boolean hostiles     = true;
+    public boolean throughWalls = false;
 
-    // ── state read by ClientPlayerMixin ──────────────────────────
+    // ── read by ClientPlayerMixin ────────────────────────────────
     public volatile boolean rotating = false;
     public volatile float   outYaw, outPitch;
 
-    // last rotation the server actually received
-    private float sentYaw, sentPitch;
+    private float sentYaw, sentPitch;     // last rotation the server received
     private boolean haveSent = false;
+    private float velYaw, velPitch;       // rotation momentum
 
     private final Random rng = new Random();
     private LivingEntity target;
+    private int   hold = 0;               // min ticks before switching target
+    private int   reaction = 0;           // ticks to wait after acquiring
     private int   delay = 0;
     private float cdThreshold = 0.93f;
-    private Vec3d aimOff = new Vec3d(0, 0.85, 0);    // fraction offsets inside box, low-passed
-    private Vec3d aimGoal = aimOff;
+    private Vec3d aimOff = new Vec3d(0.5, 0.8, 0.5), aimGoal = aimOff;
     private int   retarget = 0;
     private int   pause = 0;
 
     public void toggle() {
         enabled = !enabled;
-        if (enabled) reset(); else target = null;   // off: keep rotating=true until rotation is eased back to camera
+        if (enabled) reset(); else target = null;   // off: keep rotating until eased back to camera
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc.player != null)
             mc.player.sendMessage(Text.literal("§7[Ghost] KillAura " + (enabled ? "§aON" : "§cOFF")), true);
     }
 
-    /** server teleported/rubberbanded us: client already took the server rotation, so drop everything and sit out a bit */
+    /** server rubberbanded us: client already adopted server rotation -> drop state, sit out a bit */
     public void onSetback() {
-        rotating = false; haveSent = false; target = null; pause = 12; delay = 0;
+        rotating = false; haveSent = false; target = null; pause = 12; delay = 0; velYaw = velPitch = 0;
     }
 
     private void reset() {
-        target = null; rotating = false; haveSent = false; delay = 0;
+        target = null; rotating = false; haveSent = false; delay = 0; velYaw = velPitch = 0;
     }
 
-    /** called from START_CLIENT_TICK, before vanilla input handling */
+    /** START_CLIENT_TICK, before vanilla input handling */
     public void onStartTick(MinecraftClient mc) {
         if (mc.player == null || mc.world == null || mc.interactionManager == null) { reset(); return; }
         if (!haveSent) { sentYaw = mc.player.getYaw(); sentPitch = mc.player.getPitch(); haveSent = true; }
         if (pause > 0) { pause--; rotating = false; haveSent = false; return; }
 
-        if (mc.currentScreen != null || mc.player.isDead() || mc.player.isUsingItem()) { target = null; }
+        boolean idle = !enabled || mc.currentScreen != null || mc.player.isDead() || mc.player.isUsingItem();
 
-        // ── attack with rotation the server already has ──────────
-        if (enabled && target != null && target.isAlive() && delay <= 0 && canHitWithSent(mc, target)
+        // ── attack with the rotation the server already has ──────
+        if (!idle && target != null && target.isAlive() && delay <= 0 && reaction <= 0
+                && canHitWithSent(mc, target)
                 && mc.player.getAttackCooldownProgress(0.5f) >= cdThreshold) {
-            mc.interactionManager.attackEntity(mc.player, target);   // packet order: attack, then swing (vanilla)
+            mc.interactionManager.attackEntity(mc.player, target);   // attack, then swing (vanilla order)
             mc.player.swingHand(Hand.MAIN_HAND);
-            cdThreshold = 0.92f + rng.nextFloat() * 0.07f;
-            delay = rng.nextInt(4) == 0 ? 1 : 0;                      // occasional 1-tick hesitation
-        } else if (delay > 0) delay--;
+            cdThreshold = 0.91f + rng.nextFloat() * 0.08f;
+            delay = rng.nextInt(5) == 0 ? 1 + rng.nextInt(2) : 0;     // occasional hesitation
+        } else {
+            if (delay > 0) delay--;
+        }
+        if (reaction > 0) reaction--;
+        if (hold > 0) hold--;
 
-        // ── pick target + compute rotation for THIS tick's movement packet ──
-        target = (enabled && mc.currentScreen == null && !mc.player.isDead() && !mc.player.isUsingItem()) ? pickTarget(mc) : null;
+        // ── target selection: lock, switch only after hold expires or target invalid ──
+        if (idle) target = null;
+        else if (target == null || !valid(mc, target) || distBox(mc.player.getEyePos(), target) > aimRange
+                || (hold <= 0 && better(mc) != null && better(mc) != target)) {
+            LivingEntity old = target;
+            target = pickTarget(mc);
+            if (target != null && target != old) { hold = 10 + rng.nextInt(8); reaction = 2 + rng.nextInt(4); }
+        }
+
         if (target == null) {
-            // no target: ease the rotation back to the camera instead of letting vanilla snap it in one packet
+            // ease back to the camera instead of letting vanilla snap it in one packet
             float cy = mc.player.getYaw(), cp = mc.player.getPitch();
-            if (!rotating || Math.hypot(MathHelper.wrapDegrees(cy - sentYaw), cp - sentPitch) < 1.0) { rotating = false; return; }
+            if (!rotating || Math.hypot(MathHelper.wrapDegrees(cy - sentYaw), cp - sentPitch) < 1.0) {
+                rotating = false; velYaw = velPitch = 0; return;
+            }
             stepToward(mc, cy, cp, false);
             return;
         }
 
-        if (--retarget <= 0) {                                        // slow drifting aim point
-            aimGoal = new Vec3d(0.5 + (rng.nextDouble() - 0.5) * 0.6,
+        if (--retarget <= 0) {                                        // slowly drifting aim point inside the box
+            aimGoal = new Vec3d(0.5 + (rng.nextDouble() - 0.5) * 0.55,
                                 0.55 + rng.nextDouble() * 0.35,
-                                0.5 + (rng.nextDouble() - 0.5) * 0.6);
-            retarget = 6 + rng.nextInt(10);
+                                0.5 + (rng.nextDouble() - 0.5) * 0.55);
+            retarget = 6 + rng.nextInt(12);
         }
-        aimOff = aimOff.add(aimGoal.subtract(aimOff).multiply(0.25));
+        aimOff = aimOff.add(aimGoal.subtract(aimOff).multiply(0.2));
 
         Box b = target.getBoundingBox();
         Vec3d eye = mc.player.getEyePos();
@@ -110,52 +125,56 @@ public class KillAura {
                 MathHelper.lerp(aimOff.x, b.minX, b.maxX),
                 MathHelper.lerp(aimOff.y, b.minY, b.maxY),
                 MathHelper.lerp(aimOff.z, b.minZ, b.maxZ));
-        // if the eye is inside the aim column anyway, closest-point keeps pitch sane at point blank
         double dx = p.x - eye.x, dy = p.y - eye.y, dz = p.z - eye.z;
         float wantYaw   = (float) Math.toDegrees(Math.atan2(-dx, dz));
         float wantPitch = MathHelper.clamp((float) -Math.toDegrees(Math.atan2(dy, Math.sqrt(dx * dx + dz * dz))), -90f, 90f);
-
         stepToward(mc, wantYaw, wantPitch, true);
     }
 
+    // ── momentum rotation: accelerates, decelerates, tiny overshoot; then GCD snap ──
     private void stepToward(MinecraftClient mc, float wantYaw, float wantPitch, boolean jitter) {
         float dYaw   = MathHelper.wrapDegrees(wantYaw - sentYaw);
         float dPitch = wantPitch - sentPitch;
         float dist   = (float) Math.hypot(dYaw, dPitch);
 
-        // ease: big turns are fast, final approach slows (no constant-speed snap)
-        float step = MathHelper.clamp(dist * (0.45f + rng.nextFloat() * 0.2f), MIN_TURN, MAX_TURN);
-        if (dist <= step) step = dist;
-        float k = dist < 1e-4f ? 0f : step / dist;
-        dYaw   *= k;
-        dPitch *= k;
-        // small independent jitter, only while still turning
-        if (jitter && dist > 2f) { dYaw += (float) rng.nextGaussian() * 0.35f; dPitch += (float) rng.nextGaussian() * 0.2f; }
+        float gain = 0.42f + rng.nextFloat() * 0.16f;
+        float tYaw = dYaw * gain, tPit = dPitch * gain;
+        float mag = (float) Math.hypot(tYaw, tPit);
+        float cap = turnSpeed * (0.8f + rng.nextFloat() * 0.2f);
+        if (mag > cap) { tYaw *= cap / mag; tPit *= cap / mag; }
 
-        // GCD: snap delta to what a real mouse at this sensitivity can produce
+        velYaw   = velYaw   * 0.40f + tYaw * 0.60f;
+        velPitch = velPitch * 0.40f + tPit * 0.60f;
+        float aYaw = velYaw, aPit = velPitch;
+        if (jitter && dist > 2.5f) { aYaw += (float) rng.nextGaussian() * 0.32f; aPit += (float) rng.nextGaussian() * 0.18f; }
+
+        // never fly far past the goal
+        float lim = dist * 1.12f + 0.4f;
+        float am = (float) Math.hypot(aYaw, aPit);
+        if (am > lim) { aYaw *= lim / am; aPit *= lim / am; }
+
+        // GCD: deltas a real mouse at this sensitivity can produce
         double sens = mc.options.getMouseSensitivity().getValue();
         double f = sens * 0.6 + 0.2;
         float gcd = (float) (f * f * f * 8.0 * 0.15);
-        dYaw   = Math.round(dYaw   / gcd) * gcd;
-        dPitch = Math.round(dPitch / gcd) * gcd;
+        aYaw = Math.round(aYaw / gcd) * gcd;
+        aPit = Math.round(aPit / gcd) * gcd;
 
-        outYaw   = sentYaw + dYaw;
-        outPitch = MathHelper.clamp(sentPitch + dPitch, -90f, 90f);
+        outYaw   = sentYaw + aYaw;
+        outPitch = MathHelper.clamp(sentPitch + aPit, -90f, 90f);
         rotating = true;
     }
 
-    /** mixin calls this right after the movement packet went out */
+    /** mixin: right after the movement packet went out */
     public void onRotationSent(float yaw, float pitch) { sentYaw = yaw; sentPitch = pitch; }
 
-    // ── does the last-sent rotation ray hit the target box, in reach, with LOS ──
+    // ── last-sent rotation ray must hit the box, in reach, with LOS ──
     private boolean canHitWithSent(MinecraftClient mc, LivingEntity t) {
         Vec3d eye = mc.player.getEyePos();
-        Vec3d look = look(sentYaw, sentPitch);
-        Vec3d end = eye.add(look.multiply(ATTACK_RANGE + 0.5));
+        Vec3d end = eye.add(look(sentYaw, sentPitch).multiply(attackRange + 0.5));
         Optional<Vec3d> hit = t.getBoundingBox().raycast(eye, end);
-        if (hit.isEmpty()) return false;
-        if (eye.distanceTo(hit.get()) > ATTACK_RANGE) return false;
-        if (!THROUGH_WALLS) {
+        if (hit.isEmpty() || eye.distanceTo(hit.get()) > attackRange) return false;
+        if (!throughWalls) {
             HitResult r = mc.world.raycast(new RaycastContext(eye, hit.get(),
                     RaycastContext.ShapeType.COLLIDER, RaycastContext.FluidHandling.NONE, mc.player));
             if (r.getType() != HitResult.Type.MISS) return false;
@@ -169,21 +188,27 @@ public class KillAura {
         return new Vec3d(sy * cp, -sp, cy * cp);
     }
 
-    // ── sticky nearest target ────────────────────────────────────
+    private LivingEntity better(MinecraftClient mc) {
+        Vec3d eye = mc.player.getEyePos();
+        LivingEntity c = pickTarget(mc);
+        // only worth switching if clearly closer (avoids ping-pong between two targets)
+        if (c != null && target != null && distBox(eye, c) + 0.6 > distBox(eye, target)) return target;
+        return c;
+    }
+
     private LivingEntity pickTarget(MinecraftClient mc) {
         Vec3d eye = mc.player.getEyePos();
-        if (target != null && valid(mc, target) && distBox(eye, target) <= AIM_RANGE) return target;
         return mc.world.getEntitiesByClass(LivingEntity.class,
-                        mc.player.getBoundingBox().expand(AIM_RANGE + 1), e -> valid(mc, e)).stream()
-                .filter(e -> distBox(eye, e) <= AIM_RANGE)
+                        mc.player.getBoundingBox().expand(aimRange + 1), e -> valid(mc, e)).stream()
+                .filter(e -> distBox(eye, e) <= aimRange)
                 .min(Comparator.comparingDouble(e -> distBox(eye, e)))
                 .orElse(null);
     }
 
     private boolean valid(MinecraftClient mc, LivingEntity e) {
         if (e == mc.player || !e.isAlive()) return false;
-        if (e instanceof PlayerEntity) return PLAYERS && !((PlayerEntity) e).isSpectator();
-        if (e instanceof HostileEntity) return HOSTILES;
+        if (e instanceof PlayerEntity) return players && !((PlayerEntity) e).isSpectator();
+        if (e instanceof HostileEntity) return hostiles;
         return false;
     }
 

@@ -54,6 +54,7 @@ public class KillAura {
     private int   pause = 0;
     private Vec3d prevCenter;                 // target center last tick -> velocity for lead
     private LivingEntity prevFor;
+    private Vec3d prevVt = Vec3d.ZERO;
 
     public void toggle() {
         enabled = !enabled;
@@ -104,7 +105,7 @@ public class KillAura {
         }
 
         if (target == null) {
-            prevFor = null;
+            prevFor = null; prevVt = Vec3d.ZERO;
             // ease back to the camera instead of letting vanilla snap it in one packet
             float cy = mc.player.getYaw(), cp = mc.player.getPitch();
             if (!rotating || Math.hypot(MathHelper.wrapDegrees(cy - sentYaw), cp - sentPitch) < 1.0) {
@@ -128,6 +129,7 @@ public class KillAura {
         Vec3d center = b.getCenter();
         Vec3d vt = (prevFor == target && prevCenter != null) ? center.subtract(prevCenter) : Vec3d.ZERO;
         if (vt.lengthSquared() > 1.0) vt = Vec3d.ZERO;                 // teleport / lag spike
+        vt = vt.multiply(0.65).add(prevVt.multiply(0.35)); prevVt = vt;     // smoothed target velocity
         prevCenter = center; prevFor = target;
         // while taking knockback the velocity is not a reliable predictor of next tick -> no self lead
         Vec3d vp = (mc.player.hurtTime > 0 || mc.player.getVelocity().horizontalLength() > 0.32) ? Vec3d.ZERO : mc.player.getVelocity();
@@ -148,19 +150,19 @@ public class KillAura {
         float dPitch = wantPitch - sentPitch;
         float dist   = (float) Math.hypot(dYaw, dPitch);
 
-        float gain = 0.42f + rng.nextFloat() * 0.16f;
+        float gain = 0.80f + rng.nextFloat() * 0.15f;   // target point is already lead-predicted -> aim (almost) straight at it
         float tYaw = dYaw * gain, tPit = dPitch * gain;
         float mag = (float) Math.hypot(tYaw, tPit);
         float cap = turnSpeed * (0.8f + rng.nextFloat() * 0.2f);
         if (mag > cap) { tYaw *= cap / mag; tPit *= cap / mag; }
 
-        velYaw   = velYaw   * 0.40f + tYaw * 0.60f;
-        velPitch = velPitch * 0.40f + tPit * 0.60f;
+        velYaw   = velYaw   * 0.20f + tYaw * 0.80f;
+        velPitch = velPitch * 0.20f + tPit * 0.80f;
         float aYaw = velYaw, aPit = velPitch;
         if (jitter && dist > 2.5f) { aYaw += (float) rng.nextGaussian() * 0.32f; aPit += (float) rng.nextGaussian() * 0.18f; }
 
         // never fly far past the goal
-        float lim = dist * 1.12f + 0.4f;
+        float lim = dist * 1.06f + 0.3f;
         float am = (float) Math.hypot(aYaw, aPit);
         if (am > lim) { aYaw *= lim / am; aPit *= lim / am; }
 
@@ -183,7 +185,7 @@ public class KillAura {
     private boolean canHitWithSent(MinecraftClient mc, LivingEntity t) {
         Vec3d eye = mc.player.getEyePos();
         Vec3d end = eye.add(look(sentYaw, sentPitch).multiply(attackRange + 0.5));
-        Optional<Vec3d> hit = t.getBoundingBox().expand(0.05).raycast(eye, end);   // small tolerance (servers expand ~0.03 too)
+        Optional<Vec3d> hit = t.getBoundingBox().expand(0.08).raycast(eye, end);   // small tolerance (servers expand ~0.03 too)
         if (hit.isEmpty() || eye.distanceTo(hit.get()) > attackRange) return false;
         if (!throughWalls) {
             HitResult r = mc.world.raycast(new RaycastContext(eye, hit.get(),

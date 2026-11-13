@@ -141,7 +141,7 @@ public class StaffList {
         PlayerEntity best = null; double bestScore = 1e9; boolean sit = false;
         for (PlayerEntity o : mc.world.getPlayers()) {
             if (o == ent) continue;
-            double d = ent.getPos().distanceTo(o.getPos());
+            double d = ent.getBoundingBox().getCenter().distanceTo(o.getBoundingBox().getCenter());
             if (d < 2.2 && d < bestScore) { best = o; bestScore = d; sit = true; }       // spectating = parked on target
         }
         if (best == null) {

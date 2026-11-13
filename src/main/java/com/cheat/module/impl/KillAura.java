@@ -65,7 +65,7 @@ public class KillAura {
 
     /** server rubberbanded us: client already adopted server rotation -> drop state, sit out a bit */
     public void onSetback() {
-        rotating = false; haveSent = false; target = null; pause = 12; delay = 0; velYaw = velPitch = 0;
+        rotating = false; haveSent = false; target = null; pause = 4; delay = 0; velYaw = velPitch = 0;
     }
 
     private void reset() {
@@ -129,7 +129,8 @@ public class KillAura {
         Vec3d vt = (prevFor == target && prevCenter != null) ? center.subtract(prevCenter) : Vec3d.ZERO;
         if (vt.lengthSquared() > 1.0) vt = Vec3d.ZERO;                 // teleport / lag spike
         prevCenter = center; prevFor = target;
-        Vec3d vp = mc.player.getVelocity();
+        // while taking knockback the velocity is not a reliable predictor of next tick -> no self lead
+        Vec3d vp = (mc.player.hurtTime > 0 || mc.player.getVelocity().horizontalLength() > 0.32) ? Vec3d.ZERO : mc.player.getVelocity();
         Vec3d eye = mc.player.getEyePos().add(vp.x, vp.y * 0.5, vp.z);
         Vec3d p = new Vec3d(
                 MathHelper.lerp(aimOff.x, b.minX, b.maxX) + vt.x,

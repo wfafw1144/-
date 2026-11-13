@@ -32,10 +32,28 @@ public abstract class LivingEntityMixin {
         ghost$camYaw = p.getYaw();
         ghost$swapped = true;
         p.setYaw(ka.outYaw);
-        // rotate input by (camera - aura) so world direction stays = camera direction
-        double d = Math.toRadians(ghost$camYaw - ka.outYaw);
-        double c = Math.cos(d), s = Math.sin(d);
-        return new Vec3d(in.x * c - in.z * s, in.y, in.z * c + in.x * s);
+        // strict move fix: the server brute-forces the 8 legal key combos with the yaw it knows (aura yaw).
+        // a continuously rotated input is NOT a legal combo and gets flagged (worst while taking knockback),
+        // so pick the legal combo whose world direction is closest to where the camera wants to go.
+        double mag = Math.max(Math.abs(in.x), Math.abs(in.z));
+        if (mag < 1.0E-4) return in;
+        double ca = Math.toRadians(ghost$camYaw), aa = Math.toRadians(ka.outYaw);
+        double wx = in.x * Math.cos(ca) - in.z * Math.sin(ca);
+        double wz = in.z * Math.cos(ca) + in.x * Math.sin(ca);
+        double wl = Math.hypot(wx, wz);
+        if (wl < 1.0E-6) return in;
+        wx /= wl; wz /= wl;
+        double bestScore = -2, bx = in.x, bz = in.z;
+        for (int sx = -1; sx <= 1; sx++) for (int sz = -1; sz <= 1; sz++) {
+            if (sx == 0 && sz == 0) continue;
+            double cx = sx * mag, cz = sz * mag;
+            double ux = cx * Math.cos(aa) - cz * Math.sin(aa);
+            double uz = cz * Math.cos(aa) + cx * Math.sin(aa);
+            double ul = Math.hypot(ux, uz);
+            double score = (ux * wx + uz * wz) / ul;
+            if (score > bestScore) { bestScore = score; bx = cx; bz = cz; }
+        }
+        return new Vec3d(bx, in.y, bz);
     }
 
     @Inject(method = "travel", at = @At("TAIL"), require = 0)

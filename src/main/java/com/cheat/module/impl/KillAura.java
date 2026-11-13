@@ -52,6 +52,8 @@ public class KillAura {
     private Vec3d aimOff = new Vec3d(0.5, 0.8, 0.5), aimGoal = aimOff;
     private int   retarget = 0;
     private int   pause = 0;
+    private Vec3d prevCenter;                 // target center last tick -> velocity for lead
+    private LivingEntity prevFor;
 
     public void toggle() {
         enabled = !enabled;
@@ -102,6 +104,7 @@ public class KillAura {
         }
 
         if (target == null) {
+            prevFor = null;
             // ease back to the camera instead of letting vanilla snap it in one packet
             float cy = mc.player.getYaw(), cp = mc.player.getPitch();
             if (!rotating || Math.hypot(MathHelper.wrapDegrees(cy - sentYaw), cp - sentPitch) < 1.0) {
@@ -112,19 +115,26 @@ public class KillAura {
         }
 
         if (--retarget <= 0) {                                        // slowly drifting aim point inside the box
-            aimGoal = new Vec3d(0.5 + (rng.nextDouble() - 0.5) * 0.55,
-                                0.55 + rng.nextDouble() * 0.35,
-                                0.5 + (rng.nextDouble() - 0.5) * 0.55);
+            aimGoal = new Vec3d(0.5 + (rng.nextDouble() - 0.5) * 0.36,
+                                0.55 + rng.nextDouble() * 0.33,
+                                0.5 + (rng.nextDouble() - 0.5) * 0.36);
             retarget = 6 + rng.nextInt(12);
         }
         aimOff = aimOff.add(aimGoal.subtract(aimOff).multiply(0.2));
 
         Box b = target.getBoundingBox();
-        Vec3d eye = mc.player.getEyePos();
+        // LEAD: the attack lands at the start of NEXT tick, when both we and the target have moved.
+        // aim where the aim point will be, from where our eye will be (this is why it missed while walking/jumping).
+        Vec3d center = b.getCenter();
+        Vec3d vt = (prevFor == target && prevCenter != null) ? center.subtract(prevCenter) : Vec3d.ZERO;
+        if (vt.lengthSquared() > 1.0) vt = Vec3d.ZERO;                 // teleport / lag spike
+        prevCenter = center; prevFor = target;
+        Vec3d vp = mc.player.getVelocity();
+        Vec3d eye = mc.player.getEyePos().add(vp.x, vp.y * 0.5, vp.z);
         Vec3d p = new Vec3d(
-                MathHelper.lerp(aimOff.x, b.minX, b.maxX),
-                MathHelper.lerp(aimOff.y, b.minY, b.maxY),
-                MathHelper.lerp(aimOff.z, b.minZ, b.maxZ));
+                MathHelper.lerp(aimOff.x, b.minX, b.maxX) + vt.x,
+                MathHelper.lerp(aimOff.y, b.minY, b.maxY) + vt.y * 0.5,
+                MathHelper.lerp(aimOff.z, b.minZ, b.maxZ) + vt.z);
         double dx = p.x - eye.x, dy = p.y - eye.y, dz = p.z - eye.z;
         float wantYaw   = (float) Math.toDegrees(Math.atan2(-dx, dz));
         float wantPitch = MathHelper.clamp((float) -Math.toDegrees(Math.atan2(dy, Math.sqrt(dx * dx + dz * dz))), -90f, 90f);
@@ -172,7 +182,7 @@ public class KillAura {
     private boolean canHitWithSent(MinecraftClient mc, LivingEntity t) {
         Vec3d eye = mc.player.getEyePos();
         Vec3d end = eye.add(look(sentYaw, sentPitch).multiply(attackRange + 0.5));
-        Optional<Vec3d> hit = t.getBoundingBox().raycast(eye, end);
+        Optional<Vec3d> hit = t.getBoundingBox().expand(0.05).raycast(eye, end);   // small tolerance (servers expand ~0.03 too)
         if (hit.isEmpty() || eye.distanceTo(hit.get()) > attackRange) return false;
         if (!throughWalls) {
             HitResult r = mc.world.raycast(new RaycastContext(eye, hit.get(),

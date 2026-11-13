@@ -1,0 +1,7 @@
+{
+  "required": true,
+  "package": "com.cheat.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": ["ClientPlayerMixin", "ClientPlayNetworkHandlerMixin"],
+  "injectors": { "defaultRequire": 1 }
+}

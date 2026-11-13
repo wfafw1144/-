@@ -1,5 +1,7 @@
 name: build
 on: [push, workflow_dispatch]
+permissions:
+  contents: write
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -10,3 +12,10 @@ jobs:
       - run: chmod +x gradlew && ./gradlew build
       - uses: actions/upload-artifact@v4
         with: { name: ghostmod, path: build/libs/*.jar }
+      - name: publish jar to Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          JAR=$(ls build/libs/*.jar | grep -v sources | head -1)
+          TAG="build-${{ github.run_number }}"
+          gh release create "$TAG" "$JAR" --title "$TAG" --notes "auto build" --target "${{ github.sha }}"

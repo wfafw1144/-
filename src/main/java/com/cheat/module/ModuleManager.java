@@ -6,6 +6,7 @@ import com.cheat.module.impl.Fly;
 import com.cheat.module.impl.KillAura;
 import com.cheat.module.impl.NoFall;
 import com.cheat.module.impl.Speed;
+import com.cheat.module.impl.StaffList;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import com.cheat.gui.GhostScreen;
 import net.minecraft.client.MinecraftClient;
@@ -20,6 +21,7 @@ public class ModuleManager {
     public final Fly       fly     = new Fly();
     public final Speed     speed   = new Speed();
     public final NoFall    noFall  = new NoFall();
+    public final StaffList staff   = new StaffList();
 
     // 1.21.9+: KeyBinding takes a Category object, not a string
     private static final KeyBinding.Category CAT = KeyBinding.Category.create(Identifier.of("ghostmod", "main"));
@@ -59,5 +61,6 @@ public class ModuleManager {
         if (fly.enabled)      fly.onTick(mc);
         if (speed.enabled)    speed.onTick(mc);
         if (noFall.enabled)   noFall.onTick(mc);
+        if (staff.enabled)    staff.onTick(mc);
     }
 }

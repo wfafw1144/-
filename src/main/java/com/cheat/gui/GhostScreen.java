@@ -41,7 +41,7 @@ public class GhostScreen extends Screen {
 
         KillAura ka = mm.killAura;
         int y = Y;
-        c.fill(X - 4, y - 4, X + W + 4, y + ROW * 13 + 8, 0xD0101018);
+        c.fill(X - 4, y - 4, X + W + 4, y + ROW * 15 + 8, 0xD0101018);
         c.fill(X - 4, y - 4, X + W + 4, y + ROW, 0xFF6A3DE8);
         text(c, "GhostMod", X + 4, y + 4, 0xFFFFFFFF);
         y += ROW + 4;
@@ -50,6 +50,8 @@ public class GhostScreen extends Screen {
         y = toggle(c, mx, my, click, "Fly",      mm.fly.enabled, y, () -> mm.fly.toggle(MinecraftClient.getInstance()));
         y = toggle(c, mx, my, click, "Speed",    mm.speed.enabled, y, () -> mm.speed.toggle());
         y = toggle(c, mx, my, click, "NoFall",   mm.noFall.enabled, y, () -> mm.noFall.toggle());
+        y = toggle(c, mx, my, click, "StaffList", mm.staff.enabled, y, () -> mm.staff.toggle());
+        y = toggle(c, mx, my, click, "Staff alerts", mm.staff.alerts, y, () -> mm.staff.alerts = !mm.staff.alerts);
 
         y += 6;
         text(c, "KillAura settings", X + 4, y + 2, 0xFFAAAAFF); y += ROW;

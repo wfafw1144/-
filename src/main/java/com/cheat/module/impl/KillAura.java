@@ -26,7 +26,7 @@ import java.util.Random;
 public class KillAura {
 
     public boolean enabled = false;
-    private static final float SPRINT_CONE = 45f, SAFE_CONE = 12f;
+    private static final float SPRINT_CONE = 45f, SAFE_CONE = 20f;
 
     // ── settings (editable from the menu) ────────────────────────
     public double  attackRange  = 3.0;  // eye->hitbox
@@ -66,7 +66,7 @@ public class KillAura {
             mc.player.sendMessage(Text.literal("§7[Ghost] KillAura " + (enabled ? "§aON" : "§cOFF")), true);
     }
 
-    private int tickN, lastSetbackTick = -100, streak, lastAttackTick = -100, lastHurtTick = -100, safeTicks;
+    private int tickN, lastSetbackTick = -100, streak, lastAttackTick = -100, lastHurtTick = -100, safeTicks, attackPause;
     private int sbHurt, sbSprint, sbAtk, sbRot;
     private double lastDPos; private float lastDRot; private int syncOnly;
 
@@ -82,12 +82,18 @@ public class KillAura {
         if (m.player != null && m.player.isSprinting()) sbSprint++;
         if (tickN - lastAttackTick <= 3) sbAtk++;
         if (m.player != null && rotating && Math.abs(MathHelper.wrapDegrees(outYaw - m.player.getYaw())) > 20f) sbRot++;
-        if (hurt) safeTicks = 30;      // rubberbanded while taking a hit -> next 1.5 s stay close to the camera angle (vanilla-like)
+        if (hurt) safeTicks = 20;      // rubberbanded while taking a hit -> next 1.5 s stay close to the camera angle (vanilla-like)
         streak = (tickN - lastSetbackTick < 20) ? streak + 1 : 1;
         lastSetbackTick = tickN;
-        rotating = false; haveSent = false; velYaw = velPitch = 0;
-        pause = streak >= 3 ? 8 : 1;                 // rubberband loop -> back off longer
-        if (dPos > 6.0) { target = null; delay = 0; }   // real teleport (arena change etc.)
+        if (dPos > 6.0) { rotating = false; haveSent = false; velYaw = velPitch = 0; target = null; delay = 0; pause = 2; return; }  // real teleport
+        if (dRot < 0.6f) {
+            // position-only setback: our rotation state is still valid. keep rotating (resetting it makes vanilla snap the
+            // camera angle into a packet and restarts the turn = lost hits). only hold the swing for a moment.
+            attackPause = streak >= 3 ? 8 : 2;
+            return;
+        }
+        rotating = false; haveSent = false; velYaw = velPitch = 0;     // server changed our angle -> resync
+        pause = streak >= 3 ? 8 : 1;
     }
 
     private void reset() {
@@ -107,7 +113,7 @@ public class KillAura {
 
         // ── attack with the rotation the server already has ──────
         if (!idle && target != null && target.isAlive()) {
-            if (delay > 0 || reaction > 0) cDelay++;
+            if (delay > 0 || reaction > 0 || attackPause > 0) cDelay++;
             else if (mc.player.getAttackCooldownProgress(0.5f) < cdThreshold) cCd++;
             else {
                 int st = hitState(mc, target);
@@ -121,6 +127,7 @@ public class KillAura {
             }
         }
         if (delay > 0 && !(false)) delay--;
+        if (attackPause > 0) attackPause--;
         if (reaction > 0) reaction--;
         if (hold > 0) hold--;
 

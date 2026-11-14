@@ -9,8 +9,10 @@ package com.cheat.module.impl;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.LivingEntity;
+import net.minecraft.entity.decoration.ArmorStandEntity;
 import net.minecraft.entity.mob.HostileEntity;
 import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.item.Items;
 import net.minecraft.text.Text;
 import net.minecraft.util.Hand;
 import net.minecraft.util.hit.HitResult;
@@ -37,6 +39,16 @@ public class KillAura {
     public boolean throughWalls = false;
     public float   moveCone     = 15f;    // max angle between aura rotation and camera WHILE MOVING (180 = unrestricted)
     public float   airCone      = 15f;    // same, but while airborne (air control is tiny: 0.02/tick, angle mismatch barely matters)
+    // ── filled each tick from Aurora's KillAura GUI by com.cheat.AuroraBridge (standalone defaults below) ──
+    public boolean hostileOnly = true;     // mobs: hostile only (false = any non-player living entity)
+    public boolean waitCooldown = true;    // true: swing at full charge; false: fixed interval, ignores charge (damage cut!)
+    public int     interval = 8;           // ticks between swings when !waitCooldown
+    public boolean whileBlocking = false;  // keep attacking while an item (shield) is in use
+    public boolean skipShields = false, shieldBreakerOn = false;   // skip targets that are blocking when Aurora's Auto Shield Break is on
+    public boolean swing = true;           // send the arm swing with the attack
+    public boolean onlyJumping = false;    // attack only while airborne
+    public int     maxTargets = 1;         // Aurora value, informational: this aura is single-target on purpose (multi-hit per tick = Grim/Vulcan flag)
+
     public boolean kbGuard      = true;   // while taking knockback (hurtTime>0) keep the angle on the camera -> vanilla-identical movement
 
     // ── read by ClientPlayerMixin ────────────────────────────────
@@ -121,18 +133,20 @@ public class KillAura {
         if (!haveSent) { sentYaw = mc.player.getYaw(); sentPitch = mc.player.getPitch(); haveSent = true; }
         if (pause > 0) { pause--; rotating = false; haveSent = false; return; }
 
-        boolean idle = !enabled || mc.currentScreen != null || mc.player.isDead() || mc.player.isUsingItem();
+        boolean using = mc.player.isUsingItem() && !(whileBlocking && holdingShield(mc));
+        boolean idle = !enabled || mc.currentScreen != null || mc.player.isDead() || using;
 
         // ── attack with the rotation the server already has ──────
         if (!idle && target != null && target.isAlive()) {
             if (delay > 0 || reaction > 0 || attackPause > 0) cDelay++;
-            else if (mc.player.getAttackCooldownProgress(0.5f) < cdThreshold) cCd++;
-            else if (target.hurtTime > 1) cCd++;   // target still in its invulnerability frames: damage would be cut/zero
+            else if (!(waitCooldown ? mc.player.getAttackCooldownProgress(0.5f) >= cdThreshold : tickN - lastAttackTick >= interval)) cCd++;
+            else if (waitCooldown && target.hurtTime > 1) cCd++;
+            else if (onlyJumping && mc.player.isOnGround()) cCd++;   // target still in its invulnerability frames: damage would be cut/zero
             else {
                 int st = hitState(mc, target);
                 if (st == 0) {
                     mc.interactionManager.attackEntity(mc.player, target);   // attack, then swing (vanilla order)
-                    mc.player.swingHand(Hand.MAIN_HAND);
+                    if (swing) mc.player.swingHand(Hand.MAIN_HAND);
                     cdThreshold = CD_FULL;
                     delay = rng.nextInt(12) == 0 ? 1 : 0;     // occasional hesitation
                     cAtk++; lastAttackTick = tickN;
@@ -180,7 +194,7 @@ public class KillAura {
         }
         // swing imminent (cooldown nearly charged) -> settle on the box center so the ray lands; between swings it drifts
         float cdp = mc.player.getAttackCooldownProgress(0.5f);
-        boolean imminent = cdp > 0.7f;
+        boolean imminent = waitCooldown ? cdp > 0.7f : tickN - lastAttackTick >= interval - 2;
         Vec3d goal = imminent ? new Vec3d(0.5, 0.72, 0.5) : aimGoal;
         aimOff = aimOff.add(goal.subtract(aimOff).multiply(imminent ? 0.5 : 0.2));
 
@@ -333,15 +347,21 @@ public class KillAura {
         return mc.world.getEntitiesByClass(LivingEntity.class,
                         mc.player.getBoundingBox().expand(aimRange + 1), e -> valid(mc, e)).stream()
                 .filter(e -> distBox(eye, e) <= aimRange)
+                .filter(e -> throughWalls || mc.player.canSee(e))
                 .min(Comparator.comparingDouble(e -> distBox(eye, e)))
                 .orElse(null);
     }
 
     private boolean valid(MinecraftClient mc, LivingEntity e) {
         if (e == mc.player || !e.isAlive()) return false;
+        if (skipShields && shieldBreakerOn && e.isBlocking()) return false;
         if (e instanceof PlayerEntity) return players && !((PlayerEntity) e).isSpectator();
-        if (e instanceof HostileEntity) return hostiles;
-        return false;
+        if (!hostiles || e instanceof ArmorStandEntity) return false;
+        return !hostileOnly || e instanceof HostileEntity;
+    }
+
+    private static boolean holdingShield(MinecraftClient mc) {
+        return mc.player.getMainHandStack().isOf(Items.SHIELD) || mc.player.getOffHandStack().isOf(Items.SHIELD);
     }
 
     private static double distBox(Vec3d eye, Entity e) {

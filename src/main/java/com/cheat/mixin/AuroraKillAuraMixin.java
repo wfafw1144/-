@@ -16,6 +16,7 @@ public abstract class AuroraKillAuraMixin {
     // Module.onTick() only runs while the module is enabled -> mirror that into our aura
     @Inject(method = "onTick", at = @At("HEAD"), cancellable = true, remap = false, require = 0)
     private void ghost$replaceTick(CallbackInfo ci) {
+        com.cheat.AuroraBridge.sync(this, GhostMod.MODULES.killAura);   // Aurora GUI settings -> our aura
         GhostMod.MODULES.killAura.enabled = true;
         ci.cancel();
     }

@@ -26,7 +26,7 @@ import java.util.Random;
 public class KillAura {
 
     public boolean enabled = false;
-    private static final float SPRINT_CONE = 45f;
+    private static final float SPRINT_CONE = 45f, SAFE_CONE = 12f;
 
     // ── settings (editable from the menu) ────────────────────────
     public double  attackRange  = 3.0;  // eye->hitbox
@@ -66,7 +66,8 @@ public class KillAura {
             mc.player.sendMessage(Text.literal("§7[Ghost] KillAura " + (enabled ? "§aON" : "§cOFF")), true);
     }
 
-    private int tickN, lastSetbackTick = -100, streak;
+    private int tickN, lastSetbackTick = -100, streak, lastAttackTick = -100, lastHurtTick = -100, safeTicks;
+    private int sbHurt, sbSprint, sbAtk, sbRot;
     private double lastDPos; private float lastDRot; private int syncOnly;
 
     /** server corrected position/rotation. tiny = just a re-sync; real setback -> short pause, keep the target
@@ -75,6 +76,13 @@ public class KillAura {
         lastDPos = dPos; lastDRot = dRot;
         if (dPos < 0.03 && dRot < 0.6f) { syncOnly++; return; }
         setbacks++;
+        MinecraftClient m = MinecraftClient.getInstance();
+        boolean hurt = m.player != null && (m.player.hurtTime > 0 || tickN - lastHurtTick < 15);
+        if (hurt) sbHurt++;
+        if (m.player != null && m.player.isSprinting()) sbSprint++;
+        if (tickN - lastAttackTick <= 3) sbAtk++;
+        if (m.player != null && rotating && Math.abs(MathHelper.wrapDegrees(outYaw - m.player.getYaw())) > 20f) sbRot++;
+        if (hurt) safeTicks = 30;      // rubberbanded while taking a hit -> next 1.5 s stay close to the camera angle (vanilla-like)
         streak = (tickN - lastSetbackTick < 20) ? streak + 1 : 1;
         lastSetbackTick = tickN;
         rotating = false; haveSent = false; velYaw = velPitch = 0;
@@ -90,6 +98,8 @@ public class KillAura {
     public void onStartTick(MinecraftClient mc) {
         if (mc.player == null || mc.world == null || mc.interactionManager == null) { reset(); return; }
         tickN++;
+        if (mc.player != null && mc.player.hurtTime > 0) lastHurtTick = tickN;
+        if (safeTicks > 0) safeTicks--;
         if (!haveSent) { sentYaw = mc.player.getYaw(); sentPitch = mc.player.getPitch(); haveSent = true; }
         if (pause > 0) { pause--; rotating = false; haveSent = false; return; }
 
@@ -106,7 +116,7 @@ public class KillAura {
                     mc.player.swingHand(Hand.MAIN_HAND);
                     cdThreshold = 0.91f + rng.nextFloat() * 0.08f;
                     delay = rng.nextInt(8) == 0 ? 1 : 0;     // occasional hesitation
-                    cAtk++;
+                    cAtk++; lastAttackTick = tickN;
                 } else if (st == 1) cRay++; else if (st == 2) cRange++; else cWall++;
             }
         }
@@ -196,9 +206,10 @@ public class KillAura {
         float gcd = (float) (f * f * f * 8.0 * 0.15);
         // sprinting: aura yaw may only deviate from the camera by 45 deg (forward-only inputs must still be able to
         // steer toward the camera, otherwise running + turning walks you off / gets setback)
-        if (mc.player.isSprinting()) {
+        float cone = safeTicks > 0 ? SAFE_CONE : (mc.player.isSprinting() ? SPRINT_CONE : 180f);
+        if (cone < 180f) {
             float off = MathHelper.wrapDegrees(sentYaw + aYaw - mc.player.getYaw());
-            float cl = MathHelper.clamp(off, -SPRINT_CONE, SPRINT_CONE);
+            float cl = MathHelper.clamp(off, -cone, cone);
             aYaw += cl - off;
         }
         aYaw = Math.round(aYaw / gcd) * gcd;
@@ -246,6 +257,7 @@ public class KillAura {
             "delay    " + cDelay + "  " + 100 * cDelay / tot + "%",
             "setbacks: " + setbacks + "  (sync only: " + syncOnly + ")",
             String.format("last fix: pos %.2f  rot %.1f", lastDPos, lastDRot),
+            "setbacks while hurt/sprint/atk/rot: " + sbHurt + "/" + sbSprint + "/" + sbAtk + "/" + sbRot + (safeTicks > 0 ? "  [SAFE]" : ""),
             "movefix vel/jump: " + mfVel + " / " + mfJump + (rotating ? "  [rotating]" : "") };
         for (int i = 0; i < l.length; i++) c.drawText(mc.textRenderer, l[i], 6, 6 + i * 10, 0xFFFFFF55, true);
     }

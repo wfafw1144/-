@@ -6,14 +6,12 @@ package com.cheat.module;
 
 import com.cheat.gui.GhostScreen;
 import com.cheat.module.impl.KillAura;
-import com.cheat.module.impl.StaffList;
 import net.minecraft.client.MinecraftClient;
 import org.lwjgl.glfw.GLFW;
 
 public class ModuleManager {
 
     public final KillAura killAura = new KillAura();
-    public final StaffList staff = new StaffList();
 
     private boolean prevAura, prevMenu;
 
@@ -24,7 +22,6 @@ public class ModuleManager {
     }
 
     public void onTick(MinecraftClient mc) {
-        staff.tick(mc);
         long w = mc.getWindow().getHandle();
         boolean aura = GLFW.glfwGetKey(w, GLFW.GLFW_KEY_R) == GLFW.GLFW_PRESS;
         boolean menu = GLFW.glfwGetKey(w, GLFW.GLFW_KEY_RIGHT_SHIFT) == GLFW.GLFW_PRESS;

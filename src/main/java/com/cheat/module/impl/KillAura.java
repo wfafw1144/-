@@ -123,7 +123,7 @@ public class KillAura {
                     mc.interactionManager.attackEntity(mc.player, target);   // attack, then swing (vanilla order)
                     mc.player.swingHand(Hand.MAIN_HAND);
                     cdThreshold = 0.91f + rng.nextFloat() * 0.08f;
-                    delay = rng.nextInt(8) == 0 ? 1 : 0;     // occasional hesitation
+                    delay = rng.nextInt(12) == 0 ? 1 : 0;     // occasional hesitation
                     cAtk++; lastAttackTick = tickN;
                 } else if (st == 1) cRay++; else if (st == 2) cRange++; else cWall++;
             }
@@ -159,7 +159,11 @@ public class KillAura {
                                 0.5 + (rng.nextDouble() - 0.5) * 0.36);
             retarget = 6 + rng.nextInt(12);
         }
-        aimOff = aimOff.add(aimGoal.subtract(aimOff).multiply(0.2));
+        // swing imminent (cooldown nearly charged) -> settle on the box center so the ray lands; between swings it drifts
+        float cdp = mc.player.getAttackCooldownProgress(0.5f);
+        boolean imminent = cdp > 0.7f;
+        Vec3d goal = imminent ? new Vec3d(0.5, 0.72, 0.5) : aimGoal;
+        aimOff = aimOff.add(goal.subtract(aimOff).multiply(imminent ? 0.5 : 0.2));
 
         Box b = target.getBoundingBox();
         // LEAD: the attack lands at the start of NEXT tick, when both we and the target have moved.

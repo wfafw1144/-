@@ -28,7 +28,7 @@ public class KillAura {
     public boolean enabled = false;
 
     // ── settings (editable from the menu) ────────────────────────
-    public double  attackRange  = 2.95;  // eye->hitbox
+    public double  attackRange  = 3.0;  // eye->hitbox
     public double  aimRange     = 4.2;
     public float   turnSpeed    = 34f;   // max deg/tick
     public boolean players      = true;
@@ -65,9 +65,20 @@ public class KillAura {
             mc.player.sendMessage(Text.literal("§7[Ghost] KillAura " + (enabled ? "§aON" : "§cOFF")), true);
     }
 
-    /** server rubberbanded us: client already adopted server rotation -> drop state, sit out a bit */
-    public void onSetback() {
-        setbacks++; rotating = false; haveSent = false; target = null; pause = 4; delay = 0; velYaw = velPitch = 0;
+    private int tickN, lastSetbackTick = -100, streak;
+    private double lastDPos; private float lastDRot; private int syncOnly;
+
+    /** server corrected position/rotation. tiny = just a re-sync; real setback -> short pause, keep the target
+     *  (old version wiped the target + forced a new reaction delay each time, which is what ate the fight). */
+    public void onSetback(double dPos, float dRot) {
+        lastDPos = dPos; lastDRot = dRot;
+        if (dPos < 0.03 && dRot < 0.6f) { syncOnly++; return; }
+        setbacks++;
+        streak = (tickN - lastSetbackTick < 20) ? streak + 1 : 1;
+        lastSetbackTick = tickN;
+        rotating = false; haveSent = false; velYaw = velPitch = 0;
+        pause = streak >= 3 ? 8 : 1;                 // rubberband loop -> back off longer
+        if (dPos > 6.0) { target = null; delay = 0; }   // real teleport (arena change etc.)
     }
 
     private void reset() {
@@ -77,6 +88,7 @@ public class KillAura {
     /** START_CLIENT_TICK, before vanilla input handling */
     public void onStartTick(MinecraftClient mc) {
         if (mc.player == null || mc.world == null || mc.interactionManager == null) { reset(); return; }
+        tickN++;
         if (!haveSent) { sentYaw = mc.player.getYaw(); sentPitch = mc.player.getPitch(); haveSent = true; }
         if (pause > 0) { pause--; rotating = false; haveSent = false; return; }
 
@@ -92,7 +104,7 @@ public class KillAura {
                     mc.interactionManager.attackEntity(mc.player, target);   // attack, then swing (vanilla order)
                     mc.player.swingHand(Hand.MAIN_HAND);
                     cdThreshold = 0.91f + rng.nextFloat() * 0.08f;
-                    delay = rng.nextInt(5) == 0 ? 1 + rng.nextInt(2) : 0;     // occasional hesitation
+                    delay = rng.nextInt(8) == 0 ? 1 : 0;     // occasional hesitation
                     cAtk++;
                 } else if (st == 1) cRay++; else if (st == 2) cRange++; else cWall++;
             }
@@ -107,7 +119,7 @@ public class KillAura {
                 || (hold <= 0 && better(mc) != null && better(mc) != target)) {
             LivingEntity old = target;
             target = pickTarget(mc);
-            if (target != null && target != old) { hold = 10 + rng.nextInt(8); reaction = 2 + rng.nextInt(4); }
+            if (target != null && target != old) { hold = 10 + rng.nextInt(8); reaction = 1 + rng.nextInt(3); }
         }
 
         if (target == null) {
@@ -224,7 +236,8 @@ public class KillAura {
             "wall     " + cWall  + "  " + 100 * cWall  / tot + "%",
             "cooldown " + cCd    + "  " + 100 * cCd    / tot + "%",
             "delay    " + cDelay + "  " + 100 * cDelay / tot + "%",
-            "setbacks: " + setbacks,
+            "setbacks: " + setbacks + "  (sync only: " + syncOnly + ")",
+            String.format("last fix: pos %.2f  rot %.1f", lastDPos, lastDRot),
             "movefix vel/jump: " + mfVel + " / " + mfJump + (rotating ? "  [rotating]" : "") };
         for (int i = 0; i < l.length; i++) c.drawText(mc.textRenderer, l[i], 6, 6 + i * 10, 0xFFFFFF55, true);
     }

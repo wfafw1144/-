@@ -36,7 +36,7 @@ public class KillAura {
     public boolean hostiles     = true;
     public boolean throughWalls = false;
     public float   moveCone     = 15f;    // max angle between aura rotation and camera WHILE MOVING (180 = unrestricted)
-    public float   airCone      = 70f;    // same, but while airborne (air control is tiny: 0.02/tick, angle mismatch barely matters)
+    public float   airCone      = 25f;    // same, but while airborne (air control is tiny: 0.02/tick, angle mismatch barely matters)
     public boolean kbGuard      = true;   // while taking knockback (hurtTime>0) keep the angle on the camera -> vanilla-identical movement
 
     // ── read by ClientPlayerMixin ────────────────────────────────

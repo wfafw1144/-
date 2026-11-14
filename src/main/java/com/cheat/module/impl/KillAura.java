@@ -36,6 +36,7 @@ public class KillAura {
     public boolean hostiles     = true;
     public boolean throughWalls = false;
     public float   moveCone     = 15f;    // max angle between aura rotation and camera WHILE MOVING (180 = unrestricted)
+    public float   airCone      = 70f;    // same, but while airborne (air control is tiny: 0.02/tick, angle mismatch barely matters)
     public boolean kbGuard      = true;   // while taking knockback (hurtTime>0) keep the angle on the camera -> vanilla-identical movement
 
     // ── read by ClientPlayerMixin ────────────────────────────────
@@ -240,8 +241,9 @@ public class KillAura {
                 || pv.x * pv.x + pv.z * pv.z > 0.003;
         // standing still: fully silent rotation. moving: server simulates our walk with the angle we send, so any
         // big gap between aura angle and camera = movement mismatch = rubberband. keep the gap inside moveCone.
-        float cone = safeTicks > 0 ? SAFE_CONE : (moving ? moveCone : 180f);
-        if (mc.player.isSprinting()) cone = Math.min(cone, SPRINT_CONE);
+        boolean air = !mc.player.isOnGround();
+        float cone = safeTicks > 0 ? SAFE_CONE : (moving ? (air ? Math.max(moveCone, airCone) : moveCone) : 180f);
+        if (mc.player.isSprinting() && !air) cone = Math.min(cone, SPRINT_CONE);   // ground sprint + jump boost need the tight cone
         if (cone < 180f) {
             float off = MathHelper.wrapDegrees(sentYaw + aYaw - mc.player.getYaw());
             float cl = MathHelper.clamp(off, -cone, cone);

@@ -41,7 +41,7 @@ public class GhostScreen extends Screen {
 
         KillAura ka = mm.killAura;
         int y = Y;
-        c.fill(X - 4, y - 4, X + W + 4, y + ROW * 18 + 8, 0xD0101018);
+        c.fill(X - 4, y - 4, X + W + 4, y + ROW * 19 + 8, 0xD0101018);
         c.fill(X - 4, y - 4, X + W + 4, y + ROW, 0xFF6A3DE8);
         text(c, "GhostMod", X + 4, y + 4, 0xFFFFFFFF);
         y += ROW + 4;
@@ -63,6 +63,7 @@ public class GhostScreen extends Screen {
         ka.attackRange = slider(c, mx, my, click, down, 0, "Reach", ka.attackRange, 2.0, 3.3, y); y += ROW;
         ka.turnSpeed   = (float) slider(c, mx, my, click, down, 1, "Turn speed", ka.turnSpeed, 8, 60, y); y += ROW;
         ka.moveCone    = (float) slider(c, mx, my, click, down, 2, "Moving cone (deg)", ka.moveCone, 5, 180, y); y += ROW;
+        ka.airCone     = (float) slider(c, mx, my, click, down, 3, "Air cone (deg)", ka.airCone, 5, 180, y); y += ROW;
 
         prevDown = down;
     }

@@ -41,7 +41,9 @@ public abstract class EntityMixin {
         if (wl < 1.0E-6) return in;
         wx /= wl; wz /= wl;
         double bestScore = -2, bx = in.x, bz = in.z;
-        for (int sx = -1; sx <= 1; sx++) for (int sz = -1; sz <= 1; sz++) {
+        // sprinting needs a forward key on the server's side too: while sprinting only forward combos are legal
+        int szMin = p.isSprinting() ? 1 : -1;
+        for (int sx = -1; sx <= 1; sx++) for (int sz = szMin; sz <= 1; sz++) {
             if (sx == 0 && sz == 0) continue;
             double cx = sx * mag, cz = sz * mag;
             double ux = cx * Math.cos(aa) - cz * Math.sin(aa);

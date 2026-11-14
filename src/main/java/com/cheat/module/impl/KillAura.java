@@ -26,6 +26,7 @@ import java.util.Random;
 public class KillAura {
 
     public boolean enabled = false;
+    private static final float SPRINT_CONE = 45f;
 
     // ── settings (editable from the menu) ────────────────────────
     public double  attackRange  = 3.0;  // eye->hitbox
@@ -193,6 +194,13 @@ public class KillAura {
         double sens = mc.options.getMouseSensitivity().getValue();
         double f = sens * 0.6 + 0.2;
         float gcd = (float) (f * f * f * 8.0 * 0.15);
+        // sprinting: aura yaw may only deviate from the camera by 45 deg (forward-only inputs must still be able to
+        // steer toward the camera, otherwise running + turning walks you off / gets setback)
+        if (mc.player.isSprinting()) {
+            float off = MathHelper.wrapDegrees(sentYaw + aYaw - mc.player.getYaw());
+            float cl = MathHelper.clamp(off, -SPRINT_CONE, SPRINT_CONE);
+            aYaw += cl - off;
+        }
         aYaw = Math.round(aYaw / gcd) * gcd;
         aPit = Math.round(aPit / gcd) * gcd;
 

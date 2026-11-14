@@ -68,6 +68,8 @@ public class KillAura {
 
     private int tickN, lastSetbackTick = -100, streak, lastAttackTick = -100, lastHurtTick = -100, safeTicks, attackPause;
     private int sbHurt, sbSprint, sbAtk, sbRot, b1, b2, b3;
+    private int sbWhileRot, sbWhileIdle, tRot, tIdle;
+    private net.minecraft.client.world.ClientWorld lastWorld;
     private double lastDPos; private float lastDRot; private int syncOnly;
 
     /** server corrected position/rotation. tiny = just a re-sync; real setback -> short pause, keep the target
@@ -78,6 +80,7 @@ public class KillAura {
         // < 0.25 block and no turn = the server just nudging position (lag comp / sync), not a rubberband. don't react.
         if (dPos < 0.25 && dRot < 0.6f) { syncOnly++; return; }
         setbacks++;
+        if (rotating) sbWhileRot++; else sbWhileIdle++;
         MinecraftClient m = MinecraftClient.getInstance();
         boolean hurt = m.player != null && (m.player.hurtTime > 0 || tickN - lastHurtTick < 15);
         if (hurt) sbHurt++;
@@ -106,6 +109,8 @@ public class KillAura {
     public void onStartTick(MinecraftClient mc) {
         if (mc.player == null || mc.world == null || mc.interactionManager == null) { reset(); return; }
         tickN++;
+        if (mc.world != lastWorld) { lastWorld = mc.world; resetDebug(); }   // stats per match/world
+        if (rotating) tRot++; else tIdle++;
         if (mc.player != null && mc.player.hurtTime > 0) lastHurtTick = tickN;
         if (safeTicks > 0) safeTicks--;
         if (!haveSent) { sentYaw = mc.player.getYaw(); sentPitch = mc.player.getPitch(); haveSent = true; }
@@ -255,7 +260,10 @@ public class KillAura {
     // ── debug HUD: why the aura did / didn't swing (counters since last reset) ──
     public boolean debug = false;
     private int cAtk, cRay, cRange, cWall, cCd, cDelay;
-    public void resetDebug() { cAtk = cRay = cRange = cWall = cCd = cDelay = 0; }
+    public void resetDebug() {
+        cAtk = cRay = cRange = cWall = cCd = cDelay = 0;
+        setbacks = syncOnly = sbHurt = sbSprint = sbAtk = sbRot = b1 = b2 = b3 = sbWhileRot = sbWhileIdle = tRot = tIdle = 0;
+    }
     public void renderDebug(net.minecraft.client.gui.DrawContext c) {
         MinecraftClient mc = MinecraftClient.getInstance();
         if (!debug || mc.player == null) return;
@@ -272,6 +280,8 @@ public class KillAura {
             String.format("last fix: pos %.2f  rot %.1f", lastDPos, lastDRot),
             "corrections <0.1 / <0.3 / >=0.3 blocks: " + b1 + " / " + b2 + " / " + b3,
             "setbacks while hurt/sprint/atk/rot: " + sbHurt + "/" + sbSprint + "/" + sbAtk + "/" + sbRot + (safeTicks > 0 ? "  [SAFE]" : ""),
+            String.format("real setbacks /100 ticks:  aura rotating %.1f (%d t) | not rotating %.1f (%d t)",
+                    tRot > 20 ? 100.0 * sbWhileRot / tRot : 0, tRot, tIdle > 20 ? 100.0 * sbWhileIdle / tIdle : 0, tIdle),
             "movefix vel/jump: " + mfVel + " / " + mfJump + (rotating ? "  [rotating]" : "") };
         for (int i = 0; i < l.length; i++) c.drawText(mc.textRenderer, l[i], 6, 6 + i * 10, 0xFFFFFF55, true);
     }

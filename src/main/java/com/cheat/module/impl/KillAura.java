@@ -218,10 +218,12 @@ public class KillAura {
             "wall     " + cWall  + "  " + 100 * cWall  / tot + "%",
             "cooldown " + cCd    + "  " + 100 * cCd    / tot + "%",
             "delay    " + cDelay + "  " + 100 * cDelay / tot + "%",
-            "pause/setbacks: " + setbacks };
+            "setbacks: " + setbacks,
+            "movefix vel/jump: " + mfVel + " / " + mfJump + (rotating ? "  [rotating]" : "") };
         for (int i = 0; i < l.length; i++) c.drawText(mc.textRenderer, l[i], 6, 6 + i * 10, 0xFFFFFF55, true);
     }
     private int setbacks = 0;
+    public static int mfVel, mfJump;   // how many times the move-fix hooks actually ran (0 while walking = hook not applied)
     private static Vec3d look(float yaw, float pitch) {
         float fp = pitch * 0.017453292f, fy = -yaw * 0.017453292f;
         float cy = MathHelper.cos(fy), sy = MathHelper.sin(fy), cp = MathHelper.cos(fp), sp = MathHelper.sin(fp);

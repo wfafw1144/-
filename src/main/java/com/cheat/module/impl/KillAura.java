@@ -67,14 +67,16 @@ public class KillAura {
     }
 
     private int tickN, lastSetbackTick = -100, streak, lastAttackTick = -100, lastHurtTick = -100, safeTicks, attackPause;
-    private int sbHurt, sbSprint, sbAtk, sbRot;
+    private int sbHurt, sbSprint, sbAtk, sbRot, b1, b2, b3;
     private double lastDPos; private float lastDRot; private int syncOnly;
 
     /** server corrected position/rotation. tiny = just a re-sync; real setback -> short pause, keep the target
      *  (old version wiped the target + forced a new reaction delay each time, which is what ate the fight). */
     public void onSetback(double dPos, float dRot) {
         lastDPos = dPos; lastDRot = dRot;
-        if (dPos < 0.03 && dRot < 0.6f) { syncOnly++; return; }
+        if (dPos < 0.1) b1++; else if (dPos < 0.3) b2++; else b3++;
+        // < 0.25 block and no turn = the server just nudging position (lag comp / sync), not a rubberband. don't react.
+        if (dPos < 0.25 && dRot < 0.6f) { syncOnly++; return; }
         setbacks++;
         MinecraftClient m = MinecraftClient.getInstance();
         boolean hurt = m.player != null && (m.player.hurtTime > 0 || tickN - lastHurtTick < 15);
@@ -89,7 +91,7 @@ public class KillAura {
         if (dRot < 0.6f) {
             // position-only setback: our rotation state is still valid. keep rotating (resetting it makes vanilla snap the
             // camera angle into a packet and restarts the turn = lost hits). only hold the swing for a moment.
-            attackPause = streak >= 3 ? 8 : 2;
+            attackPause = streak >= 3 ? 6 : 1;
             return;
         }
         rotating = false; haveSent = false; velYaw = velPitch = 0;     // server changed our angle -> resync
@@ -264,6 +266,7 @@ public class KillAura {
             "delay    " + cDelay + "  " + 100 * cDelay / tot + "%",
             "setbacks: " + setbacks + "  (sync only: " + syncOnly + ")",
             String.format("last fix: pos %.2f  rot %.1f", lastDPos, lastDRot),
+            "corrections <0.1 / <0.3 / >=0.3 blocks: " + b1 + " / " + b2 + " / " + b3,
             "setbacks while hurt/sprint/atk/rot: " + sbHurt + "/" + sbSprint + "/" + sbAtk + "/" + sbRot + (safeTicks > 0 ? "  [SAFE]" : ""),
             "movefix vel/jump: " + mfVel + " / " + mfJump + (rotating ? "  [rotating]" : "") };
         for (int i = 0; i < l.length; i++) c.drawText(mc.textRenderer, l[i], 6, 6 + i * 10, 0xFFFFFF55, true);

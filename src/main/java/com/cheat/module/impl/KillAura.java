@@ -55,6 +55,7 @@ public class KillAura {
     private Vec3d prevCenter;                 // target center last tick -> velocity for lead
     private LivingEntity prevFor;
     private Vec3d prevVt = Vec3d.ZERO;
+    private Vec3d prevSelf;
 
     public void toggle() {
         enabled = !enabled;
@@ -110,7 +111,7 @@ public class KillAura {
         }
 
         if (target == null) {
-            prevFor = null; prevVt = Vec3d.ZERO;
+            prevFor = null; prevVt = Vec3d.ZERO; prevSelf = null;
             // ease back to the camera instead of letting vanilla snap it in one packet
             float cy = mc.player.getYaw(), cp = mc.player.getPitch();
             if (!rotating || Math.hypot(MathHelper.wrapDegrees(cy - sentYaw), cp - sentPitch) < 1.0) {
@@ -136,9 +137,14 @@ public class KillAura {
         if (vt.lengthSquared() > 1.0) vt = Vec3d.ZERO;                 // teleport / lag spike
         vt = vt.multiply(0.65).add(prevVt.multiply(0.35)); prevVt = vt;     // smoothed target velocity
         prevCenter = center; prevFor = target;
-        // while taking knockback the velocity is not a reliable predictor of next tick -> no self lead
-        Vec3d vp = (mc.player.hurtTime > 0 || mc.player.getVelocity().horizontalLength() > 0.32) ? Vec3d.ZERO : mc.player.getVelocity();
-        Vec3d eye = mc.player.getEyePos().add(vp.x, vp.y * 0.5, vp.z);
+        // self lead from the REAL displacement of the last tick (includes knockback / friction), not from
+        // getVelocity() which is wrong right after a hit. next tick moves ~ the same distance, slightly decayed.
+        Vec3d sc = mc.player.getBoundingBox().getCenter();
+        Vec3d selfD = (prevSelf != null) ? sc.subtract(prevSelf) : Vec3d.ZERO;
+        prevSelf = sc;
+        if (selfD.lengthSquared() > 0.64) selfD = Vec3d.ZERO;          // teleport / setback
+        Vec3d vp = selfD.multiply(0.92);
+        Vec3d eye = mc.player.getEyePos().add(vp.x, vp.y * 0.4, vp.z);
         Vec3d p = new Vec3d(
                 MathHelper.lerp(aimOff.x, b.minX, b.maxX) + vt.x,
                 MathHelper.lerp(aimOff.y, b.minY, b.maxY) + vt.y * 0.5,

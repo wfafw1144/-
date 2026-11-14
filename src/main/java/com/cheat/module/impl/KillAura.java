@@ -35,6 +35,7 @@ public class KillAura {
     public boolean players      = true;
     public boolean hostiles     = true;
     public boolean throughWalls = false;
+    public boolean kbGuard      = true;   // while taking knockback (hurtTime>0) keep the angle on the camera -> vanilla-identical movement
 
     // ── read by ClientPlayerMixin ────────────────────────────────
     public volatile boolean rotating = false;
@@ -154,6 +155,14 @@ public class KillAura {
             if (!rotating || Math.hypot(MathHelper.wrapDegrees(cy - sentYaw), cp - sentPitch) < 1.0) {
                 rotating = false; velYaw = velPitch = 0; return;
             }
+            stepToward(mc, cy, cp, false);
+            return;
+        }
+
+        if (kbGuard && mc.player.hurtTime > 0) {
+            // taking knockback: no angle deviation at all, so server and client simulate the exact same motion
+            float cy = mc.player.getYaw(), cp = mc.player.getPitch();
+            if (!rotating || Math.hypot(MathHelper.wrapDegrees(cy - sentYaw), cp - sentPitch) < 1.0) { rotating = false; velYaw = velPitch = 0; return; }
             stepToward(mc, cy, cp, false);
             return;
         }

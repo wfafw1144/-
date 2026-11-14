@@ -35,6 +35,7 @@ public class KillAura {
     public boolean players      = true;
     public boolean hostiles     = true;
     public boolean throughWalls = false;
+    public float   moveCone     = 15f;    // max angle between aura rotation and camera WHILE MOVING (180 = unrestricted)
     public boolean kbGuard      = true;   // while taking knockback (hurtTime>0) keep the angle on the camera -> vanilla-identical movement
 
     // ── read by ClientPlayerMixin ────────────────────────────────
@@ -233,7 +234,14 @@ public class KillAura {
         float gcd = (float) (f * f * f * 8.0 * 0.15);
         // sprinting: aura yaw may only deviate from the camera by 45 deg (forward-only inputs must still be able to
         // steer toward the camera, otherwise running + turning walks you off / gets setback)
-        float cone = safeTicks > 0 ? SAFE_CONE : (mc.player.isSprinting() ? SPRINT_CONE : 180f);
+        Vec3d pv = mc.player.getVelocity();
+        boolean moving = mc.options.forwardKey.isPressed() || mc.options.backKey.isPressed()
+                || mc.options.leftKey.isPressed() || mc.options.rightKey.isPressed()
+                || pv.x * pv.x + pv.z * pv.z > 0.003;
+        // standing still: fully silent rotation. moving: server simulates our walk with the angle we send, so any
+        // big gap between aura angle and camera = movement mismatch = rubberband. keep the gap inside moveCone.
+        float cone = safeTicks > 0 ? SAFE_CONE : (moving ? moveCone : 180f);
+        if (mc.player.isSprinting()) cone = Math.min(cone, SPRINT_CONE);
         if (cone < 180f) {
             float off = MathHelper.wrapDegrees(sentYaw + aYaw - mc.player.getYaw());
             float cl = MathHelper.clamp(off, -cone, cone);

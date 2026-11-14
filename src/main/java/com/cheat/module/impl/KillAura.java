@@ -84,6 +84,7 @@ public class KillAura {
         // < 0.25 block and no turn = the server just nudging position (lag comp / sync), not a rubberband. don't react.
         if (dPos < 0.25 && dRot < 0.6f) { syncOnly++; return; }
         setbacks++;
+        HoverGuard.setback = true;
         if (rotating) sbWhileRot++; else sbWhileIdle++;
         MinecraftClient m = MinecraftClient.getInstance();
         boolean hurt = m.player != null && (m.player.hurtTime > 0 || tickN - lastHurtTick < 15);

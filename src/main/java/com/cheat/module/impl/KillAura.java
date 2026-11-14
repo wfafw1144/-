@@ -145,6 +145,9 @@ public class KillAura {
             else {
                 int st = hitState(mc, target);
                 if (st == 0) {
+                    // shield up: servers drop damage from a player who is still using an item -> release (RELEASE_USE_ITEM), hit,
+                    // and vanilla re-raises it next tick while RMB is held. packet order release->attack->use is what a real player sends.
+                    if (mc.player.isUsingItem()) mc.interactionManager.stopUsingItem(mc.player);
                     mc.interactionManager.attackEntity(mc.player, target);   // attack, then swing (vanilla order)
                     if (swing) mc.player.swingHand(Hand.MAIN_HAND);
                     cdThreshold = CD_FULL;

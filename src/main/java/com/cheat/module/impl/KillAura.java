@@ -28,7 +28,7 @@ public class KillAura {
     public boolean enabled = false;
 
     // ── settings (editable from the menu) ────────────────────────
-    public double  attackRange  = 2.85;  // eye->hitbox
+    public double  attackRange  = 2.95;  // eye->hitbox
     public double  aimRange     = 4.2;
     public float   turnSpeed    = 34f;   // max deg/tick
     public boolean players      = true;
@@ -66,7 +66,7 @@ public class KillAura {
 
     /** server rubberbanded us: client already adopted server rotation -> drop state, sit out a bit */
     public void onSetback() {
-        rotating = false; haveSent = false; target = null; pause = 4; delay = 0; velYaw = velPitch = 0;
+        setbacks++; rotating = false; haveSent = false; target = null; pause = 4; delay = 0; velYaw = velPitch = 0;
     }
 
     private void reset() {
@@ -82,16 +82,21 @@ public class KillAura {
         boolean idle = !enabled || mc.currentScreen != null || mc.player.isDead() || mc.player.isUsingItem();
 
         // ── attack with the rotation the server already has ──────
-        if (!idle && target != null && target.isAlive() && delay <= 0 && reaction <= 0
-                && canHitWithSent(mc, target)
-                && mc.player.getAttackCooldownProgress(0.5f) >= cdThreshold) {
-            mc.interactionManager.attackEntity(mc.player, target);   // attack, then swing (vanilla order)
-            mc.player.swingHand(Hand.MAIN_HAND);
-            cdThreshold = 0.91f + rng.nextFloat() * 0.08f;
-            delay = rng.nextInt(5) == 0 ? 1 + rng.nextInt(2) : 0;     // occasional hesitation
-        } else {
-            if (delay > 0) delay--;
+        if (!idle && target != null && target.isAlive()) {
+            if (delay > 0 || reaction > 0) cDelay++;
+            else if (mc.player.getAttackCooldownProgress(0.5f) < cdThreshold) cCd++;
+            else {
+                int st = hitState(mc, target);
+                if (st == 0) {
+                    mc.interactionManager.attackEntity(mc.player, target);   // attack, then swing (vanilla order)
+                    mc.player.swingHand(Hand.MAIN_HAND);
+                    cdThreshold = 0.91f + rng.nextFloat() * 0.08f;
+                    delay = rng.nextInt(5) == 0 ? 1 + rng.nextInt(2) : 0;     // occasional hesitation
+                    cAtk++;
+                } else if (st == 1) cRay++; else if (st == 2) cRange++; else cWall++;
+            }
         }
+        if (delay > 0 && !(false)) delay--;
         if (reaction > 0) reaction--;
         if (hold > 0) hold--;
 
@@ -182,19 +187,41 @@ public class KillAura {
     public void onRotationSent(float yaw, float pitch) { sentYaw = yaw; sentPitch = pitch; }
 
     // ── last-sent rotation ray must hit the box, in reach, with LOS ──
-    private boolean canHitWithSent(MinecraftClient mc, LivingEntity t) {
+    /** 0 = can hit, 1 = ray misses box, 2 = out of reach, 3 = wall in the way */
+    private int hitState(MinecraftClient mc, LivingEntity t) {
         Vec3d eye = mc.player.getEyePos();
         Vec3d end = eye.add(look(sentYaw, sentPitch).multiply(attackRange + 0.5));
         Optional<Vec3d> hit = t.getBoundingBox().expand(0.08).raycast(eye, end);   // small tolerance (servers expand ~0.03 too)
-        if (hit.isEmpty() || eye.distanceTo(hit.get()) > attackRange) return false;
+        if (hit.isEmpty()) return distBox(eye, t) > attackRange ? 2 : 1;
+        if (eye.distanceTo(hit.get()) > attackRange) return 2;
         if (!throughWalls) {
             HitResult r = mc.world.raycast(new RaycastContext(eye, hit.get(),
                     RaycastContext.ShapeType.COLLIDER, RaycastContext.FluidHandling.NONE, mc.player));
-            if (r.getType() != HitResult.Type.MISS) return false;
+            if (r.getType() != HitResult.Type.MISS) return 3;
         }
-        return true;
+        return 0;
     }
 
+    // ── debug HUD: why the aura did / didn't swing (counters since last reset) ──
+    public boolean debug = false;
+    private int cAtk, cRay, cRange, cWall, cCd, cDelay;
+    public void resetDebug() { cAtk = cRay = cRange = cWall = cCd = cDelay = 0; }
+    public void renderDebug(net.minecraft.client.gui.DrawContext c) {
+        MinecraftClient mc = MinecraftClient.getInstance();
+        if (!debug || mc.player == null) return;
+        int tot = Math.max(1, cAtk + cRay + cRange + cWall + cCd + cDelay);
+        String[] l = {
+            "KA ticks with target: " + tot,
+            "hit      " + cAtk   + "  " + 100 * cAtk   / tot + "%",
+            "ray miss " + cRay   + "  " + 100 * cRay   / tot + "%",
+            "range    " + cRange + "  " + 100 * cRange / tot + "%",
+            "wall     " + cWall  + "  " + 100 * cWall  / tot + "%",
+            "cooldown " + cCd    + "  " + 100 * cCd    / tot + "%",
+            "delay    " + cDelay + "  " + 100 * cDelay / tot + "%",
+            "pause/setbacks: " + setbacks };
+        for (int i = 0; i < l.length; i++) c.drawText(mc.textRenderer, l[i], 6, 6 + i * 10, 0xFFFFFF55, true);
+    }
+    private int setbacks = 0;
     private static Vec3d look(float yaw, float pitch) {
         float fp = pitch * 0.017453292f, fy = -yaw * 0.017453292f;
         float cy = MathHelper.cos(fy), sy = MathHelper.sin(fy), cp = MathHelper.cos(fp), sp = MathHelper.sin(fp);

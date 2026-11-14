@@ -13,7 +13,7 @@ public class GhostMod implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         MODULES.init();
-        HudRenderCallback.EVENT.register((ctx, tick) -> MODULES.staff.render(ctx));
+        HudRenderCallback.EVENT.register((ctx, tick) -> { MODULES.staff.render(ctx); MODULES.killAura.renderDebug(ctx); });
         ClientTickEvents.START_CLIENT_TICK.register(mc -> MODULES.onStartTick(mc));
         ClientTickEvents.END_CLIENT_TICK.register(mc -> {
             if (mc.player == null) return;

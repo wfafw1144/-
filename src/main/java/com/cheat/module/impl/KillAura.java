@@ -206,6 +206,9 @@ public class KillAura {
         double dx = p.x - eye.x, dy = p.y - eye.y, dz = p.z - eye.z;
         float wantYaw   = (float) Math.toDegrees(Math.atan2(-dx, dz));
         float wantPitch = MathHelper.clamp((float) -Math.toDegrees(Math.atan2(dy, Math.sqrt(dx * dx + dz * dz))), -90f, 90f);
+        // standing inside / on top of the target: the direction to the aim point is garbage (atan2 of ~0) and the
+        // rotation would spin. hold the current angle; the server accepts a hit when the eye is inside the box.
+        if (Math.sqrt(dx * dx + dz * dz) < 0.25) { wantYaw = sentYaw; wantPitch = sentPitch; }
         stepToward(mc, wantYaw, wantPitch, true);
     }
 
@@ -266,6 +269,8 @@ public class KillAura {
     /** 0 = can hit, 1 = ray misses box, 2 = out of reach, 3 = wall in the way */
     private int hitState(MinecraftClient mc, LivingEntity t) {
         Vec3d eye = mc.player.getEyePos();
+        // Box.raycast() returns empty when the ray starts INSIDE the box -> overlapping the target looked like a miss.
+        if (t.getBoundingBox().expand(0.08).contains(eye)) return 0;
         Vec3d end = eye.add(look(sentYaw, sentPitch).multiply(attackRange + 0.5));
         Optional<Vec3d> hit = t.getBoundingBox().expand(0.08).raycast(eye, end);   // small tolerance (servers expand ~0.03 too)
         if (hit.isEmpty()) return distBox(eye, t) > attackRange ? 2 : 1;

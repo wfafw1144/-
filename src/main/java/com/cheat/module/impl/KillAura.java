@@ -36,7 +36,7 @@ public class KillAura {
     public boolean hostiles     = true;
     public boolean throughWalls = false;
     public float   moveCone     = 15f;    // max angle between aura rotation and camera WHILE MOVING (180 = unrestricted)
-    public float   airCone      = 25f;    // same, but while airborne (air control is tiny: 0.02/tick, angle mismatch barely matters)
+    public float   airCone      = 15f;    // same, but while airborne (air control is tiny: 0.02/tick, angle mismatch barely matters)
     public boolean kbGuard      = true;   // while taking knockback (hurtTime>0) keep the angle on the camera -> vanilla-identical movement
 
     // ── read by ClientPlayerMixin ────────────────────────────────
@@ -52,7 +52,8 @@ public class KillAura {
     private int   hold = 0;               // min ticks before switching target
     private int   reaction = 0;           // ticks to wait after acquiring
     private int   delay = 0;
-    private float cdThreshold = 0.93f;
+    private static final float CD_FULL = 1.0f;   // damage scales 0.2 + p^2*0.8 -> anything under 1.0 is a real damage cut
+    private float cdThreshold = CD_FULL;
     private Vec3d aimOff = new Vec3d(0.5, 0.8, 0.5), aimGoal = aimOff;
     private int   retarget = 0;
     private int   pause = 0;
@@ -125,12 +126,13 @@ public class KillAura {
         if (!idle && target != null && target.isAlive()) {
             if (delay > 0 || reaction > 0 || attackPause > 0) cDelay++;
             else if (mc.player.getAttackCooldownProgress(0.5f) < cdThreshold) cCd++;
+            else if (target.hurtTime > 1) cCd++;   // target still in its invulnerability frames: damage would be cut/zero
             else {
                 int st = hitState(mc, target);
                 if (st == 0) {
                     mc.interactionManager.attackEntity(mc.player, target);   // attack, then swing (vanilla order)
                     mc.player.swingHand(Hand.MAIN_HAND);
-                    cdThreshold = 0.91f + rng.nextFloat() * 0.08f;
+                    cdThreshold = CD_FULL;
                     delay = rng.nextInt(12) == 0 ? 1 : 0;     // occasional hesitation
                     cAtk++; lastAttackTick = tickN;
                 } else if (st == 1) cRay++; else if (st == 2) cRange++; else cWall++;

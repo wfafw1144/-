@@ -29,7 +29,8 @@ public class ModuleManager {
         boolean menu = GLFW.glfwGetKey(w, GLFW.GLFW_KEY_RIGHT_SHIFT) == GLFW.GLFW_PRESS;
         if (mc.currentScreen == null) {
             if (aura && !prevAura) toggleAura();
-            if (menu && !prevMenu) mc.setScreen(new GhostScreen(this));
+            // GhostScreen stays in the jar but is not reachable any more (Right Shift does nothing)
+            // if (menu && !prevMenu) mc.setScreen(new GhostScreen(this));
         }
         prevAura = aura; prevMenu = menu;   // updated every tick so closing a screen with the key held doesn't re-trigger
     }

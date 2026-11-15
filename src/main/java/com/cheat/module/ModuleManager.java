@@ -5,6 +5,7 @@
 package com.cheat.module;
 
 import com.cheat.gui.GhostScreen;
+import com.cheat.module.impl.AutoTotem;
 import com.cheat.module.impl.KillAura;
 import net.minecraft.client.MinecraftClient;
 import org.lwjgl.glfw.GLFW;
@@ -12,6 +13,7 @@ import org.lwjgl.glfw.GLFW;
 public class ModuleManager {
 
     public final KillAura killAura = new KillAura();
+    public final AutoTotem autoTotem = new AutoTotem();
 
     private boolean prevAura, prevMenu;
 

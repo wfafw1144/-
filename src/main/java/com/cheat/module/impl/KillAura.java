@@ -43,7 +43,7 @@ public class KillAura {
     public boolean hostileOnly = true;     // mobs: hostile only (false = any non-player living entity)
     public boolean waitCooldown = true;    // true: swing at full charge; false: fixed interval, ignores charge (damage cut!)
     public int     interval = 8;           // ticks between swings when !waitCooldown
-    public boolean whileBlocking = false;  // keep attacking while an item (shield) is in use
+    public boolean whileBlocking = true;   // keep attacking while an item (shield) is in use
     public boolean skipShields = false, shieldBreakerOn = false;   // skip targets that are blocking when Aurora's Auto Shield Break is on
     public boolean swing = true;           // send the arm swing with the attack
     public boolean onlyJumping = false;    // attack only while airborne

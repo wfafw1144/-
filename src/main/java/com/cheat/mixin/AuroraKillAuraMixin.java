@@ -16,23 +16,9 @@ public abstract class AuroraKillAuraMixin {
     // Module.onTick() only runs while the module is enabled -> mirror that into our aura
     @Inject(method = "onTick", at = @At("HEAD"), cancellable = true, remap = false, require = 0)
     private void ghost$replaceTick(CallbackInfo ci) {
+        com.cheat.AuroraBridge.sync(this, GhostMod.MODULES.killAura);   // Aurora GUI settings -> our aura
         GhostMod.MODULES.killAura.enabled = true;
         ci.cancel();
-    }
-
-    // Aurora's own KillAura settings are not used any more -> hide them from its GUI (the aura runs on GhostMod's tuned values)
-    @Inject(method = "<init>", at = @At("RETURN"), remap = false, require = 0)
-    private void ghost$noSettings(CallbackInfo ci) {
-        try {
-            for (Class<?> c = getClass(); c != null; c = c.getSuperclass()) {
-                try {
-                    java.lang.reflect.Field f = c.getDeclaredField("settings");
-                    f.setAccessible(true);
-                    ((java.util.List<?>) f.get(this)).clear();
-                    return;
-                } catch (NoSuchFieldException ignored) {}
-            }
-        } catch (Throwable ignored) {}
     }
 
     @Inject(method = "onDisable", at = @At("HEAD"), remap = false, require = 0)

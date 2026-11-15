@@ -368,7 +368,7 @@ public class KillAura {
     }
 
     private static boolean holdingShield(MinecraftClient mc) {
-        return mc.player.getMainHandStack().isOf(Items.SHIELD) || mc.player.getOffHandStack().isOf(Items.SHIELD);
+        return mc.player.getActiveItem().isOf(Items.SHIELD);   // the item being USED is the shield (eating with a shield in the other hand must not count)
     }
 
     private static double distBox(Vec3d eye, Entity e) {

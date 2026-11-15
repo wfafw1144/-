@@ -49,6 +49,8 @@ public class KillAura {
     public boolean onlyJumping = false;    // attack only while airborne
     public int     maxTargets = 1;         // Aurora value, informational: this aura is single-target on purpose (multi-hit per tick = Grim/Vulcan flag)
 
+    public static volatile int useBlock = 0;   // ticks during which vanilla item use (shield re-raise) is held back
+
     public boolean kbGuard      = true;   // while taking knockback (hurtTime>0) keep the angle on the camera -> vanilla-identical movement
 
     // ── read by ClientPlayerMixin ────────────────────────────────
@@ -144,10 +146,12 @@ public class KillAura {
             else if (onlyJumping && mc.player.isOnGround()) cCd++;   // target still in its invulnerability frames: damage would be cut/zero
             else {
                 int st = hitState(mc, target);
-                if (st == 0) {
-                    // shield up: servers drop damage from a player who is still using an item -> release (RELEASE_USE_ITEM), hit,
-                    // and vanilla re-raises it next tick while RMB is held. packet order release->attack->use is what a real player sends.
-                    if (mc.player.isUsingItem()) mc.interactionManager.stopUsingItem(mc.player);
+                if (st == 0 && mc.player.isUsingItem()) {
+                    // shield up: release now, hit NEXT tick, re-raise a few ticks later (MinecraftClientMixin holds doItemUse while
+                    // useBlock>0). release / attack / use are in three different ticks like a human letting go of RMB, clicking, pressing RMB.
+                    mc.interactionManager.stopUsingItem(mc.player);
+                    useBlock = 4 + rng.nextInt(3);
+                } else if (st == 0) {
                     mc.interactionManager.attackEntity(mc.player, target);   // attack, then swing (vanilla order)
                     if (swing) mc.player.swingHand(Hand.MAIN_HAND);
                     cdThreshold = CD_FULL;

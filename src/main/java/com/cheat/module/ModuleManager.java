@@ -24,6 +24,7 @@ public class ModuleManager {
     }
 
     public void onTick(MinecraftClient mc) {
+        if (KillAura.useBlock > 0) KillAura.useBlock--;
         long w = mc.getWindow().getHandle();
         boolean aura = GLFW.glfwGetKey(w, GLFW.GLFW_KEY_R) == GLFW.GLFW_PRESS;
         boolean menu = GLFW.glfwGetKey(w, GLFW.GLFW_KEY_RIGHT_SHIFT) == GLFW.GLFW_PRESS;
